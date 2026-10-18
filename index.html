@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'" />
+<title>REA Desktop</title>
+<style>
+  :root { --bg:#0f1117; --panel:#171a23; --line:#262b38; --text:#e6e8ee; --muted:#8b92a5; --accent:#4f8cff; --ok:#3ecf8e; --bad:#ff6b6b; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: "Segoe UI", Arial, sans-serif; background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; }
+  header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; }
+  header h1 { margin:0; font-size:18px; }
+  header span { color:var(--muted); font-size:12px; }
+  main { flex:1; display:flex; min-height:0; }
+  aside { width:340px; padding:16px; border-right:1px solid var(--line); overflow-y:auto; background:var(--panel); }
+  section.out { flex:1; display:flex; flex-direction:column; min-width:0; }
+  label { display:block; font-size:12px; color:var(--muted); margin:14px 0 6px; }
+  input[type=text], input[type=number] { width:100%; padding:9px 10px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--text); font-size:13px; }
+  button { cursor:pointer; border:0; border-radius:8px; padding:10px 12px; font-size:13px; font-weight:600; color:#fff; background:var(--accent); width:100%; margin-top:8px; }
+  button.sec { background:#2a3042; }
+  button.danger { background:#a83a3a; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  .file { display:flex; gap:8px; }
+  .file button { width:auto; margin-top:0; white-space:nowrap; }
+  .apk { font-size:12px; color:var(--muted); margin-top:6px; word-break:break-all; }
+  .bar { padding:10px 16px; border-bottom:1px solid var(--line); display:flex; gap:10px; align-items:center; }
+  .bar button { width:auto; margin:0; }
+  #status { flex:1; font-size:12px; color:var(--muted); }
+  pre { flex:1; margin:0; padding:16px; overflow:auto; font-family:Consolas,"Courier New",monospace; font-size:12.5px; line-height:1.5; white-space:pre-wrap; word-break:break-word; }
+  hr { border:0; border-top:1px solid var(--line); margin:18px 0 4px; }
+  h3 { margin:16px 0 0; font-size:13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>REA Desktop</h1>
+  <span>APK analysis for Windows - powered by REA</span>
+</header>
+<main>
+  <aside>
+    <h3>1. Select APK</h3>
+    <div class="file" style="margin-top:8px">
+      <input id="apkPath" type="text" placeholder="No file selected" readonly />
+      <button id="pick">Browse</button>
+    </div>
+    <div class="apk" id="apkName"></div>
+
+    <hr />
+    <h3>2. Overview</h3>
+    <button id="btnPackage">Package info (manifest, classes)</button>
+
+    <hr />
+    <h3>3. Search / inspect</h3>
+    <label>Search classes by name</label>
+    <input id="query" type="text" placeholder="e.g. MainActivity" />
+    <button id="btnSearch" class="sec">Search classes</button>
+
+    <label>Class name (full)</label>
+    <input id="className" type="text" placeholder="e.g. com.example.MainActivity" />
+    <button id="btnClass" class="sec">Inspect class</button>
+    <button id="btnRefs" class="sec">Trace references</button>
+
+    <label>Method name</label>
+    <input id="methodName" type="text" placeholder="e.g. onCreate" />
+    <label>Overload index (optional)</label>
+    <input id="overload" type="number" min="0" placeholder="0" />
+    <button id="btnMethod" class="sec">Inspect method</button>
+
+    <hr />
+    <button id="btnDoctor" class="sec">Check setup (doctor)</button>
+  </aside>
+
+  <section class="out">
+    <div class="bar">
+      <div id="status">Ready.</div>
+      <button id="btnCancel" class="danger" disabled>Stop</button>
+      <button id="btnCopy" class="sec">Copy</button>
+      <button id="btnSave" class="sec">Save</button>
+      <button id="btnClear" class="sec">Clear</button>
+    </div>
+    <pre id="output">Select an APK, then press one of the buttons on the left.</pre>
+  </section>
+</main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const out = $("output");
+  const status = $("status");
+  const actionButtons = ["btnPackage","btnSearch","btnClass","btnRefs","btnMethod","btnDoctor"];
+  let apk = "";
+  let busy = false;
+
+  function setBusy(b, msg) {
+    busy = b;
+    actionButtons.forEach((id) => ($(id).disabled = b));
+    $("btnCancel").disabled = !b;
+    status.textContent = msg;
+  }
+
+  window.rea.onOutput((text) => {
+    out.textContent += text;
+    out.scrollTop = out.scrollHeight;
+  });
+
+  async function run(label, args) {
+    if (busy) return;
+    out.textContent = "";
+    setBusy(true, "Running: " + label + " ... (the first run can take a minute)");
+    const r = await window.rea.run(args);
+    if (r.error) out.textContent += "\n[Error] " + r.error + "\n";
+    const ok = r.code === 0;
+    setBusy(false, ok ? "Done." : "Finished with errors (code " + r.code + ").");
+    status.style.color = ok ? "var(--ok)" : "var(--bad)";
+  }
+
+  function needApk() {
+    if (!apk) { status.textContent = "Please select an APK first."; status.style.color = "var(--bad)"; return false; }
+    return true;
+  }
+  function need(value, name) {
+    if (!value.trim()) { status.textContent = "Please fill: " + name; status.style.color = "var(--bad)"; return false; }
+    return true;
+  }
+
+  $("pick").onclick = async () => {
+    const p = await window.rea.pickApk();
+    if (!p) return;
+    apk = p;
+    $("apkPath").value = p;
+    $("apkName").textContent = p.split(/[\\/]/).pop();
+  };
+
+  $("btnPackage").onclick = () => needApk() && run("package info", ["inspect-android-package", apk]);
+
+  $("btnSearch").onclick = () => {
+    if (!needApk() || !need($("query").value, "search text")) return;
+    run("search classes", ["search-android-classes", apk, $("query").value.trim()]);
+  };
+
+  $("btnClass").onclick = () => {
+    if (!needApk() || !need($("className").value, "class name")) return;
+    run("inspect class", ["inspect-android-class", apk, $("className").value.trim()]);
+  };
+
+  $("btnRefs").onclick = () => {
+    if (!needApk() || !need($("className").value, "class name")) return;
+    const args = ["trace-android-references", apk, $("className").value.trim()];
+    const m = $("methodName").value.trim();
+    if (m) {
+      args.push("--method-name", m);
+      const o = $("overload").value.trim();
+      if (o !== "") args.push("--overload-index", o);
+    }
+    run("trace references", args);
+  };
+
+  $("btnMethod").onclick = () => {
+    if (!needApk() || !need($("className").value, "class name") || !need($("methodName").value, "method name")) return;
+    const args = ["inspect-android-method", apk, $("className").value.trim(), $("methodName").value.trim()];
+    const o = $("overload").value.trim();
+    if (o !== "") args.push("--overload-index", o);
+    run("inspect method", args);
+  };
+
+  $("btnDoctor").onclick = () => run("doctor", ["doctor"]);
+  $("btnCancel").onclick = () => window.rea.cancel();
+  $("btnClear").onclick = () => { out.textContent = ""; };
+  $("btnCopy").onclick = () => navigator.clipboard.writeText(out.textContent);
+  $("btnSave").onclick = async () => {
+    const ok = await window.rea.saveOutput(out.textContent);
+    status.textContent = ok ? "Saved." : "Save cancelled.";
+  };
+</script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+{
+  "name": "rea-desktop",
+  "version": "1.0.0",
+  "description": "REA Desktop - a Windows app for analysing Android APKs (powered by REA)",
+  "main": "main.js",
+  "author": "Nasir",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --x64 --publish never"
+  },
+  "dependencies": {
+    "rea-agents": "6.5.0"
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "com.nasir.readesktop",
+    "productName": "REA Desktop",
+    "asar": false,
+    "directories": { "output": "dist" },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "package.json"
+    ],
+    "extraResources": [
+      { "from": "resources", "to": "bin", "filter": ["**/*"] }
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "zip", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

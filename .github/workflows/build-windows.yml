@@ -1,0 +1,47 @@
+name: Build Windows App
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # Bundle Node 22, a full JDK 21 and the JADX engine inside the app,
+      # so the user does not need to install anything.
+      - name: Prepare bundled runtime
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force resources | Out-Null
+          Copy-Item (Get-Command node).Source resources\node.exe
+          Copy-Item -Recurse $env:JAVA_HOME resources\jdk
+          $jar = "resources\jadx-headless-mcp-0.7.1-all.jar"
+          Invoke-WebRequest -Uri 'https://github.com/1013503897/jadx-headless-mcp/releases/download/v0.7.1/jadx-headless-mcp-0.7.1-all.jar' -OutFile $jar
+          $hash = (Get-FileHash -Algorithm SHA256 $jar).Hash.ToLowerInvariant()
+          if ($hash -ne '6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75') { throw "JADX JAR hash mismatch: $hash" }
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build installer
+        run: npm run dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: REA-Desktop-Windows
+          path: |
+            dist/*.exe
+            dist/*.zip
